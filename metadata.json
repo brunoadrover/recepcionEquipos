@@ -1,0 +1,6 @@
+{
+  "name": "Control y Relevamiento de Equipos",
+  "description": "Sistema de control y relevamiento en recepción de equipos pesados y vehículos de terceros para obras viales, civiles y electromecánicas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

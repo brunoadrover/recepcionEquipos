@@ -1,0 +1,531 @@
+import React, { useState } from 'react';
+import { Truck, Users, Plus, Trash2, Edit2, Search, X, Check, Phone, Mail, Building } from 'lucide-react';
+import { Propietario, RecepcionData } from '../types';
+import {
+  getPropietarios,
+  savePropietario,
+  deletePropietario,
+  getRecepciones,
+  saveRecepcion,
+  getActiveObra,
+} from '../lib/offlineStore';
+import { formatNumeroArg } from '../lib/pdfGenerator';
+
+export const EquiposView: React.FC = () => {
+  const [subTab, setSubTab] = useState<'propietarios' | 'equipos'>('propietarios');
+  const [propietarios, setPropietarios] = useState<Propietario[]>(() => getPropietarios());
+  const [recepciones, setRecepciones] = useState<RecepcionData[]>(() => getRecepciones());
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Propietario modal
+  const [showPropModal, setShowPropModal] = useState(false);
+  const [editingProp, setEditingProp] = useState<Propietario | null>(null);
+  const [propRazon, setPropRazon] = useState('');
+  const [propCuit, setPropCuit] = useState('');
+  const [propContacto, setPropContacto] = useState('');
+  const [propTel, setPropTel] = useState('');
+  const [propCorreo, setPropCorreo] = useState('');
+
+  // Equipo modal
+  const [showEquipoModal, setShowEquipoModal] = useState(false);
+  const [eqInterno, setEqInterno] = useState('');
+  const [eqTipo, setEqTipo] = useState('');
+  const [eqMarca, setEqMarca] = useState('');
+  const [eqModelo, setEqModelo] = useState('');
+  const [eqSerie, setEqSerie] = useState('');
+  const [eqDominio, setEqDominio] = useState('');
+  const [eqPropietario, setEqPropietario] = useState('');
+
+  const refresh = () => {
+    setPropietarios(getPropietarios());
+    setRecepciones(getRecepciones());
+  };
+
+  const handleOpenNewProp = () => {
+    setEditingProp(null);
+    setPropRazon('');
+    setPropCuit('');
+    setPropContacto('');
+    setPropTel('');
+    setPropCorreo('');
+    setShowPropModal(true);
+  };
+
+  const handleOpenEditProp = (p: Propietario) => {
+    setEditingProp(p);
+    setPropRazon(p.razon_social);
+    setPropCuit(p.cuit ? String(p.cuit) : '');
+    setPropContacto(p.nombre_contacto || '');
+    setPropTel(p.tel_contacto ? String(p.tel_contacto) : '');
+    setPropCorreo(p.correo_contacto || '');
+    setShowPropModal(true);
+  };
+
+  const handleSaveProp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!propRazon.trim()) return;
+
+    const item: Propietario = {
+      id: editingProp ? editingProp.id : 'prop-' + Date.now(),
+      razon_social: propRazon.trim(),
+      cuit: propCuit.trim() ? Number(propCuit.replace(/\D/g, '')) : null,
+      nombre_contacto: propContacto.trim() || null,
+      tel_contacto: propTel.trim() ? Number(propTel.replace(/\D/g, '')) : null,
+      correo_contacto: propCorreo.trim() || null,
+    };
+
+    savePropietario(item);
+    refresh();
+    setShowPropModal(false);
+  };
+
+  const handleDeleteProp = (id: string) => {
+    if (window.confirm('¿Eliminar este propietario? Los equipos asociados mantendrán su historial.')) {
+      deletePropietario(id);
+      refresh();
+    }
+  };
+
+  const handleSaveEquipo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!eqInterno.trim()) return;
+
+    const newRec: RecepcionData = {
+      id: crypto.randomUUID ? crypto.randomUUID() : 'rec-' + Date.now(),
+      fecha: new Date().toISOString().split('T')[0],
+      interno: eqInterno.trim(),
+      tipo: eqTipo.trim() || 'Maquinaria',
+      marca: eqMarca.trim(),
+      modelo: eqModelo.trim(),
+      serie: eqSerie.trim(),
+      dominio: eqDominio.trim().toUpperCase(),
+      propietario: eqPropietario || (propietarios[0]?.id ?? ''),
+      obra: getActiveObra(),
+      origen: 'Terceros (Alquiler)',
+      contador: 0,
+      unidad_cont: 'hs',
+      mantenimiento_propietario: false,
+      estado: 'borrador',
+      filtros_instalados: [],
+      elementos_desgaste: [],
+      faltantes: [],
+      ultimos_servicios: [],
+      lubricantes: [],
+      datos_complementarios: '',
+      documentos_accesorios: {
+        documentacion: false,
+        gato_hidraulico: false,
+        matafuego: false,
+        botiquin: false,
+        calzas_cuñas: false,
+        rueda_auxilio: false,
+        kit_seguridad: false,
+      },
+      adjuntos: [],
+    };
+
+    saveRecepcion(newRec);
+    refresh();
+    setShowEquipoModal(false);
+    setEqInterno('');
+    setEqTipo('');
+    setEqMarca('');
+    setEqModelo('');
+    setEqSerie('');
+    setEqDominio('');
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-28 space-y-5">
+      
+      {/* Header and Sub-Tabs */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+            Gestión de Equipos y Propietarios
+          </h1>
+          <p className="text-xs text-slate-500">
+            Administrá el catálogo de empresas socias, transportistas y parque de maquinaria.
+          </p>
+        </div>
+
+        {/* SubTab Toggle */}
+        <div className="flex bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
+          <button
+            onClick={() => setSubTab('propietarios')}
+            className={`min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              subTab === 'propietarios'
+                ? 'bg-white text-slate-950 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Users className="w-4 h-4 text-amber-600" />
+            <span>Propietarios ({propietarios.length})</span>
+          </button>
+          <button
+            onClick={() => setSubTab('equipos')}
+            className={`min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              subTab === 'equipos'
+                ? 'bg-white text-slate-950 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Truck className="w-4 h-4 text-amber-600" />
+            <span>Equipos ({recepciones.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* SubTab 1: Propietarios */}
+      {subTab === 'propietarios' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar por razón social o CUIT..."
+                className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <button
+              onClick={handleOpenNewProp}
+              className="min-h-[42px] px-4 py-2 bg-[#0F2D3C] hover:bg-[#163e52] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs"
+            >
+              <Plus className="w-4 h-4 text-amber-400" />
+              <span>Nuevo Propietario</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {propietarios
+              .filter(
+                (p) =>
+                  p.razon_social.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  String(p.cuit || '').includes(searchTerm)
+              )
+              .map((p) => (
+                <div
+                  key={p.id}
+                  className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-colors flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h3 className="font-bold text-sm text-slate-900 leading-tight">
+                        {p.razon_social}
+                      </h3>
+                      <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono font-bold shrink-0">
+                        CUIT: {p.cuit ? formatNumeroArg(p.cuit) : 'S/D'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600 mt-2">
+                      {p.nombre_contacto && (
+                        <p className="flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{p.nombre_contacto}</span>
+                        </p>
+                      )}
+                      {p.tel_contacto && (
+                        <p className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-slate-400" />
+                          <span className="font-mono">{p.tel_contacto}</span>
+                        </p>
+                      )}
+                      {p.correo_contacto && (
+                        <p className="flex items-center gap-1.5 truncate">
+                          <Mail className="w-3.5 h-3.5 text-slate-400" />
+                          <span className="truncate">{p.correo_contacto}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1 pt-3 border-t border-slate-100 mt-3">
+                    <button
+                      onClick={() => handleOpenEditProp(p)}
+                      className="p-1.5 text-slate-600 hover:text-[#0F2D3C] hover:bg-slate-100 rounded-lg"
+                      title="Editar"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProp(p.id)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* SubTab 2: Equipos Catálogo */}
+      {subTab === 'equipos' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar por interno, marca o patente..."
+                className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <button
+              onClick={() => {
+                setEqPropietario(propietarios[0]?.id || '');
+                setShowEquipoModal(true);
+              }}
+              className="min-h-[42px] px-4 py-2 bg-[#0F2D3C] hover:bg-[#163e52] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs"
+            >
+              <Plus className="w-4 h-4 text-amber-400" />
+              <span>Nuevo Equipo</span>
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
+                <tr>
+                  <th className="py-3 px-4">Interno</th>
+                  <th className="py-3 px-4">Tipo</th>
+                  <th className="py-3 px-4">Marca y Modelo</th>
+                  <th className="py-3 px-4">Serie / Chasis</th>
+                  <th className="py-3 px-4">Dominio</th>
+                  <th className="py-3 px-4">Obra Actual</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recepciones
+                  .filter(
+                    (eq) =>
+                      eq.interno?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      eq.marca?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      eq.dominio?.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                  .map((eq) => (
+                    <tr key={eq.id} className="hover:bg-slate-50">
+                      <td className="py-3 px-4 font-bold font-mono text-slate-900">[{eq.interno}]</td>
+                      <td className="py-3 px-4 text-slate-600">{eq.tipo}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-900">{eq.marca} {eq.modelo}</td>
+                      <td className="py-3 px-4 font-mono text-slate-500">{eq.serie || '-'}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-slate-700">{eq.dominio || '-'}</td>
+                      <td className="py-3 px-4 text-slate-600 truncate max-w-[200px]">{eq.obra}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Propietario Form */}
+      {showPropModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <h3 className="text-base font-bold text-slate-900 mb-1">
+              {editingProp ? 'Editar Propietario' : 'Nuevo Propietario'}
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">Información de la empresa o particular dueño de la maquinaria.</p>
+
+            <form onSubmit={handleSaveProp} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Razón Social *</label>
+                <input
+                  type="text"
+                  required
+                  value={propRazon}
+                  onChange={(e) => setPropRazon(e.target.value)}
+                  placeholder="ej. VialSur Maquinarias S.A."
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">CUIT</label>
+                <input
+                  type="text"
+                  value={propCuit}
+                  onChange={(e) => setPropCuit(e.target.value)}
+                  placeholder="ej. 30712345678"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre de Contacto</label>
+                <input
+                  type="text"
+                  value={propContacto}
+                  onChange={(e) => setPropContacto(e.target.value)}
+                  placeholder="ej. Juan Pérez"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={propTel}
+                    onChange={(e) => setPropTel(e.target.value)}
+                    placeholder="ej. 1154329876"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Correo Electrónico</label>
+                  <input
+                    type="email"
+                    value={propCorreo}
+                    onChange={(e) => setPropCorreo(e.target.value)}
+                    placeholder="correo@ejemplo.com"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowPropModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold bg-[#0F2D3C] text-white hover:bg-[#163e52] rounded-lg shadow-sm"
+                >
+                  Guardar Propietario
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Equipo Form */}
+      {showEquipoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <h3 className="text-base font-bold text-slate-900 mb-1">Alta de Equipo</h3>
+            <p className="text-xs text-slate-500 mb-4">Ingresá los datos identificatorios de la máquina.</p>
+
+            <form onSubmit={handleSaveEquipo} className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Nº Interno *</label>
+                  <input
+                    type="text"
+                    required
+                    value={eqInterno}
+                    onChange={(e) => setEqInterno(e.target.value)}
+                    placeholder="ej. EX-301"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Dominio / Patente</label>
+                  <input
+                    type="text"
+                    value={eqDominio}
+                    onChange={(e) => setEqDominio(e.target.value.toUpperCase())}
+                    placeholder="ej. AD 345 TY"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Tipo de Máquina</label>
+                <input
+                  type="text"
+                  value={eqTipo}
+                  onChange={(e) => setEqTipo(e.target.value)}
+                  placeholder="ej. Pala Cargadora, Grúa, Minicargador"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Marca</label>
+                  <input
+                    type="text"
+                    value={eqMarca}
+                    onChange={(e) => setEqMarca(e.target.value)}
+                    placeholder="ej. CAT"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Modelo</label>
+                  <input
+                    type="text"
+                    value={eqModelo}
+                    onChange={(e) => setEqModelo(e.target.value)}
+                    placeholder="ej. 950H"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nº de Serie / Chasis</label>
+                <input
+                  type="text"
+                  value={eqSerie}
+                  onChange={(e) => setEqSerie(e.target.value)}
+                  placeholder="ej. K9H04512"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Propietario</label>
+                <select
+                  value={eqPropietario}
+                  onChange={(e) => setEqPropietario(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                >
+                  {propietarios.map((p) => (
+                    <option key={p.id} value={p.id}>{p.razon_social}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEquipoModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold bg-[#0F2D3C] text-white rounded-lg shadow-sm"
+                >
+                  Registrar Equipo
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
