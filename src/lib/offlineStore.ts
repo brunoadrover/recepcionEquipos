@@ -1,5 +1,17 @@
 import { RecepcionData, Propietario, PlanListaSector, FiltrosLista, Responsable, ObraItem } from '../types';
 import { getSupabaseClient } from './supabase';
+import {
+  ensureValidUuid,
+  isValidUuid,
+  createPropietarioDirect,
+  updatePropietarioDirect,
+  deletePropietarioDirect,
+  fetchPropietariosDirect,
+  fetchSectoresDirect,
+  fetchFiltrosDirect,
+  fetchResponsablesDirect,
+  fetchEquiposDirect,
+} from './supabaseService';
 
 const KEYS = {
   OBRAS: 'app_obras',
@@ -12,46 +24,46 @@ const KEYS = {
   COMPANY_LOGO: 'app_company_logo',
 };
 
-// Initial default seeds
+// Initial default seeds with valid PostgreSQL UUIDs matching Supabase
 export const DEFAULT_OBRAS: ObraItem[] = [
-  { id: 'obra-1', codigo_uo: 'UO-104', nombre: 'Autopista RN 7 Km 140-190' },
-  { id: 'obra-2', codigo_uo: 'UO-212', nombre: 'Central Termoeléctrica Pilar' },
-  { id: 'obra-3', codigo_uo: 'UO-305', nombre: 'Viaducto Ferroviario Mitre' },
-  { id: 'obra-4', codigo_uo: 'UO-418', nombre: 'Colector Cloacal Sur Etapa 2' },
+  { id: '11111111-1111-4111-a111-111111111111', codigo_uo: 'UO-104', nombre: 'Autopista RN 7 Km 140-190' },
+  { id: '22222222-2222-4222-a222-222222222222', codigo_uo: 'UO-212', nombre: 'Central Termoeléctrica Pilar' },
+  { id: '33333333-3333-4333-a333-333333333333', codigo_uo: 'UO-305', nombre: 'Viaducto Ferroviario Mitre' },
+  { id: '44444444-4444-4444-a444-444444444444', codigo_uo: 'UO-418', nombre: 'Colector Cloacal Sur Etapa 2' },
 ];
 
 export const DEFAULT_SECTORES: PlanListaSector[] = [
-  { id: '1b8997a1-2d7c-4890-a359-001', sector: 'Motor térmico' },
-  { id: '1b8997a1-2d7c-4890-a359-002', sector: 'Transmisión y convertidor' },
-  { id: '1b8997a1-2d7c-4890-a359-003', sector: 'Sistema hidráulico principal' },
-  { id: '1b8997a1-2d7c-4890-a359-004', sector: 'Diferencial delantero / trasero' },
-  { id: '1b8997a1-2d7c-4890-a359-005', sector: 'Mandos finales y reductores' },
-  { id: '1b8997a1-2d7c-4890-a359-006', sector: 'Mecanismo de giro / tornamesa' },
-  { id: '1b8997a1-2d7c-4890-a359-007', sector: 'Caja tándem' },
-  { id: '1b8997a1-2d7c-4890-a359-008', sector: 'Sistema de enfriamiento (refrigerante)' },
+  { id: 'fbda9acd-610f-4335-85b4-1c0e3df7ccba', sector: 'Reductor tambor traslación' },
+  { id: '4fab505c-f378-4b0e-a586-4555ae6af9cb', sector: 'Reductor tambor vibración' },
+  { id: '1b8997a1-2d7c-4890-a359-000000000001', sector: 'Motor térmico' },
+  { id: '1b8997a1-2d7c-4890-a359-000000000002', sector: 'Transmisión y convertidor' },
+  { id: '1b8997a1-2d7c-4890-a359-000000000003', sector: 'Sistema hidráulico principal' },
+  { id: '1b8997a1-2d7c-4890-a359-000000000004', sector: 'Diferencial delantero / trasero' },
+  { id: '1b8997a1-2d7c-4890-a359-000000000005', sector: 'Mandos finales y reductores' },
+  { id: '1b8997a1-2d7c-4890-a359-000000000006', sector: 'Sistema de enfriamiento (refrigerante)' },
 ];
 
 export const DEFAULT_FILTROS: FiltrosLista[] = [
-  { id: 'f001-a1', tipo: 'Aceite Motor' },
-  { id: 'f002-a2', tipo: 'Combustible Primario' },
-  { id: 'f003-a3', tipo: 'Combustible Secundario / Trampa' },
-  { id: 'f004-a4', tipo: 'Aire Primario' },
-  { id: 'f005-a5', tipo: 'Aire Secundario' },
-  { id: 'f006-a6', tipo: 'Hidráulico Retorno' },
-  { id: 'f007-a7', tipo: 'Transmisión' },
-  { id: 'f008-a8', tipo: 'Filtro de Cabina / Habitáculo' },
+  { id: '579d227f-b087-435e-a4cd-97465bbff1a4', tipo: 'Aceite de Motor' },
+  { id: 'f0020000-0000-4000-a000-000000000002', tipo: 'Combustible Primario' },
+  { id: 'f0030000-0000-4000-a000-000000000003', tipo: 'Combustible Secundario / Trampa' },
+  { id: 'f0040000-0000-4000-a000-000000000004', tipo: 'Aire Primario' },
+  { id: 'f0050000-0000-4000-a000-000000000005', tipo: 'Aire Secundario' },
+  { id: 'f0060000-0000-4000-a000-000000000006', tipo: 'Hidráulico Retorno' },
+  { id: 'f0070000-0000-4000-a000-000000000007', tipo: 'Transmisión' },
+  { id: 'f0080000-0000-4000-a000-000000000008', tipo: 'Filtro de Cabina / Habitáculo' },
 ];
 
 export const DEFAULT_RESPONSABLES: Responsable[] = [
-  { id: 'resp-001', nombre: 'Ing. Carlos Mendoza (Jefe de Taller Central)' },
-  { id: 'resp-002', nombre: 'Marcos Galván (Capataz Mecánico de Obra)' },
-  { id: 'resp-003', nombre: 'Esteban Benítez (Inspector de Equipos)' },
-  { id: 'resp-004', nombre: 'Guillermo Funes (Recepción y Logística)' },
+  { id: '4d0479e6-c3ff-4303-8f5a-d4a29a4017c3', nombre: 'Martín B. Adrover (Responsable)' },
+  { id: '4c2c4cb5-30b2-4661-9efe-d342a4438bc7', nombre: 'Dario Robles (Jefe de Taller)' },
+  { id: '28d15d14-02f1-4968-9313-ffc3feca0767', nombre: 'Diego Cachambe (Administrador)' },
+  { id: '7d80e96b-8a19-4b26-ac6c-cb6e5cee3374', nombre: 'Lucas Boisseau (Administrador)' },
 ];
 
 export const DEFAULT_PROPIETARIOS: Propietario[] = [
   {
-    id: 'prop-001',
+    id: '89e36a4a-1d2c-4d11-b1d9-e9b39c3d3d1c',
     razon_social: 'VialSur Maquinarias S.A.',
     cuit: 30712345678,
     nombre_contacto: 'Martín Almada',
@@ -59,7 +71,7 @@ export const DEFAULT_PROPIETARIOS: Propietario[] = [
     correo_contacto: 'flota@vialsur.com.ar',
   },
   {
-    id: 'prop-002',
+    id: '99e36a4a-2d2c-4d22-b2d9-e9b39c3d3d2d',
     razon_social: 'Equipos y Logística Patagónica S.R.L.',
     cuit: 30698745123,
     nombre_contacto: 'Rodrigo Peña',
@@ -67,7 +79,7 @@ export const DEFAULT_PROPIETARIOS: Propietario[] = [
     correo_contacto: 'operaciones@elpatagonia.com',
   },
   {
-    id: 'prop-003',
+    id: 'aa36a4a-3d2c-4d33-b3d9-e9b39c3d3d3e',
     razon_social: 'Construcciones Civiles del Litoral S.A.',
     cuit: 30708529631,
     nombre_contacto: 'Aníbal Quiroga',
@@ -106,11 +118,12 @@ export function getObras(): ObraItem[] {
 
 export function saveObra(obra: ObraItem): void {
   const list = getObras();
-  const idx = list.findIndex((o) => o.id === obra.id);
+  const safeObra = { ...obra, id: ensureValidUuid(obra.id) };
+  const idx = list.findIndex((o) => o.id === safeObra.id);
   if (idx >= 0) {
-    list[idx] = obra;
+    list[idx] = safeObra;
   } else {
-    list.unshift(obra);
+    list.unshift(safeObra);
   }
   setStored(KEYS.OBRAS, list);
 }
@@ -133,40 +146,40 @@ export function getPropietarios(): Propietario[] {
   return getStored<Propietario[]>(KEYS.PROPIETARIOS, DEFAULT_PROPIETARIOS);
 }
 
-export function savePropietario(propietario: Propietario): void {
+export async function savePropietario(propietario: Propietario): Promise<Propietario> {
+  const safeId = ensureValidUuid(propietario.id);
+  const safeProp: Propietario = { ...propietario, id: safeId };
+
+  // 1. Update local cache immediately
   const list = getPropietarios();
-  const idx = list.findIndex((p) => p.id === propietario.id);
+  const idx = list.findIndex((p) => p.id === safeProp.id);
   if (idx >= 0) {
-    list[idx] = propietario;
+    list[idx] = safeProp;
   } else {
-    list.unshift(propietario);
+    list.unshift(safeProp);
   }
   setStored(KEYS.PROPIETARIOS, list);
+  window.dispatchEvent(new CustomEvent('propietarios-updated', { detail: list }));
 
-  // Sync to Supabase in background
-  syncPropietarioToSupabase(propietario).catch((err) => console.warn('Supabase sync prop error:', err));
+  // 2. Persist to Supabase
+  try {
+    if (idx >= 0) {
+      await updatePropietarioDirect(safeProp);
+    } else {
+      await createPropietarioDirect(safeProp);
+    }
+  } catch (err) {
+    console.warn('Background Supabase save error for propietario:', err);
+  }
+
+  return safeProp;
 }
 
-export function deletePropietario(id: string): void {
+export async function deletePropietario(id: string): Promise<void> {
   const list = getPropietarios().filter((p) => p.id !== id);
   setStored(KEYS.PROPIETARIOS, list);
-  getSupabaseClient().from('propietario').delete().eq('id', id).then();
-}
-
-async function syncPropietarioToSupabase(p: Propietario) {
-  try {
-    const client = getSupabaseClient();
-    await client.from('propietario').upsert({
-      id: p.id,
-      razon_social: p.razon_social,
-      cuit: p.cuit ? Number(p.cuit) : null,
-      nombre_contacto: p.nombre_contacto || null,
-      tel_contacto: p.tel_contacto ? Number(p.tel_contacto) : null,
-      correo_contacto: p.correo_contacto || null,
-    });
-  } catch (err) {
-    console.warn('Could not sync propietario to Supabase:', err);
-  }
+  window.dispatchEvent(new CustomEvent('propietarios-updated', { detail: list }));
+  await deletePropietarioDirect(id);
 }
 
 // Sectores
@@ -175,18 +188,24 @@ export function getSectores(): PlanListaSector[] {
 }
 
 export function saveSector(item: PlanListaSector): void {
+  const safeSector = { ...item, id: ensureValidUuid(item.id) };
   const list = getSectores();
-  const idx = list.findIndex((s) => s.id === item.id);
-  if (idx >= 0) list[idx] = item;
-  else list.push(item);
+  const idx = list.findIndex((s) => s.id === safeSector.id);
+  if (idx >= 0) list[idx] = safeSector;
+  else list.push(safeSector);
   setStored(KEYS.SECTORES, list);
-  getSupabaseClient().from('plan_lista_sector').upsert({ id: item.id, sector: item.sector }).then();
+  window.dispatchEvent(new CustomEvent('sectores-updated', { detail: list }));
+
+  getSupabaseClient().from('plan_lista_sector').upsert({ id: safeSector.id, sector: safeSector.sector }).then();
 }
 
 export function deleteSector(id: string): void {
   const list = getSectores().filter((s) => s.id !== id);
   setStored(KEYS.SECTORES, list);
-  getSupabaseClient().from('plan_lista_sector').delete().eq('id', id).then();
+  window.dispatchEvent(new CustomEvent('sectores-updated', { detail: list }));
+  if (isValidUuid(id)) {
+    getSupabaseClient().from('plan_lista_sector').delete().eq('id', id).then();
+  }
 }
 
 // Filtros
@@ -195,18 +214,24 @@ export function getFiltros(): FiltrosLista[] {
 }
 
 export function saveFiltro(item: FiltrosLista): void {
+  const safeFiltro = { ...item, id: ensureValidUuid(item.id) };
   const list = getFiltros();
-  const idx = list.findIndex((f) => f.id === item.id);
-  if (idx >= 0) list[idx] = item;
-  else list.push(item);
+  const idx = list.findIndex((f) => f.id === safeFiltro.id);
+  if (idx >= 0) list[idx] = safeFiltro;
+  else list.push(safeFiltro);
   setStored(KEYS.FILTROS, list);
-  getSupabaseClient().from('filtros_lista').upsert({ id: item.id, tipo: item.tipo }).then();
+  window.dispatchEvent(new CustomEvent('filtros-updated', { detail: list }));
+
+  getSupabaseClient().from('filtros_lista').upsert({ id: safeFiltro.id, tipo: safeFiltro.tipo }).then();
 }
 
 export function deleteFiltro(id: string): void {
   const list = getFiltros().filter((f) => f.id !== id);
   setStored(KEYS.FILTROS, list);
-  getSupabaseClient().from('filtros_lista').delete().eq('id', id).then();
+  window.dispatchEvent(new CustomEvent('filtros-updated', { detail: list }));
+  if (isValidUuid(id)) {
+    getSupabaseClient().from('filtros_lista').delete().eq('id', id).then();
+  }
 }
 
 // Responsables
@@ -215,18 +240,24 @@ export function getResponsables(): Responsable[] {
 }
 
 export function saveResponsable(item: Responsable): void {
+  const safeResp = { ...item, id: ensureValidUuid(item.id) };
   const list = getResponsables();
-  const idx = list.findIndex((r) => r.id === item.id);
-  if (idx >= 0) list[idx] = item;
-  else list.push(item);
+  const idx = list.findIndex((r) => r.id === safeResp.id);
+  if (idx >= 0) list[idx] = safeResp;
+  else list.push(safeResp);
   setStored(KEYS.RESPONSABLES, list);
-  getSupabaseClient().from('responsable').upsert({ id: item.id, nombre: item.nombre }).then();
+  window.dispatchEvent(new CustomEvent('responsables-updated', { detail: list }));
+
+  getSupabaseClient().from('responsable').upsert({ id: safeResp.id, nombre: safeResp.nombre }).then();
 }
 
 export function deleteResponsable(id: string): void {
   const list = getResponsables().filter((r) => r.id !== id);
   setStored(KEYS.RESPONSABLES, list);
-  getSupabaseClient().from('responsable').delete().eq('id', id).then();
+  window.dispatchEvent(new CustomEvent('responsables-updated', { detail: list }));
+  if (isValidUuid(id)) {
+    getSupabaseClient().from('responsable').delete().eq('id', id).then();
+  }
 }
 
 // Company Logo
@@ -238,7 +269,7 @@ export function saveCompanyLogo(dataUrl: string): void {
   localStorage.setItem(KEYS.COMPANY_LOGO, dataUrl);
 }
 
-// Recepciones Initial Seed (Realistic for Field Use)
+// Recepciones Initial Seed (Realistic for Field Use with valid UUIDs)
 const SEED_RECEPCIONES: RecepcionData[] = [
   {
     id: 'e4a198b2-3c12-4f77-9812-78d91024e001',
@@ -254,11 +285,11 @@ const SEED_RECEPCIONES: RecepcionData[] = [
     mantenimiento_propietario: true,
     obra: 'Autopista RN 7 Km 140-190',
     remito: 84920,
-    propietario: 'prop-001',
+    propietario: '89e36a4a-1d2c-4d11-b1d9-e9b39c3d3d1c',
     dominio: 'NO APLICA (ORUGAS)',
     estado: 'aprobada',
-    responsable_id: 'resp-001',
-    responsable_nombre: 'Ing. Carlos Mendoza (Jefe de Taller Central)',
+    responsable_id: '4c2c4cb5-30b2-4661-9efe-d342a4438bc7',
+    responsable_nombre: 'Dario Robles (Jefe de Taller)',
     fecha_informe: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
     observaciones_generales: 'Equipo recibido en buen estado operativo general. Orugas con 65% de vida útil remanente. Se entrega con balde de 1.2 m3 con calzas y trampa de agua purgada.',
     datos_complementarios: 'Se verificó sistema hidráulico sin pérdidas activas bajo presión de 350 bar. Propietario adjuntó libreta de mantenimiento firmada al día.',
@@ -270,9 +301,7 @@ const SEED_RECEPCIONES: RecepcionData[] = [
     },
     motor_electrico: null,
     filtros_instalados: [
-      { tipo_filtro: 'f001-a1', tipo_filtro_nombre: 'Aceite Motor', codigo: '1R-1808', marca: 'CAT OEM', observacion: 'Reemplazado hace 50 hs' },
-      { tipo_filtro: 'f002-a2', tipo_filtro_nombre: 'Combustible Primario', codigo: '1R-0751', marca: 'CAT OEM', observacion: 'Limpio' },
-      { tipo_filtro: 'f004-a4', tipo_filtro_nombre: 'Aire Primario', codigo: '131-8822', marca: 'Donaldson', observacion: 'Soplado e inspeccionado' },
+      { tipo_filtro: '579d227f-b087-435e-a4cd-97465bbff1a4', tipo_filtro_nombre: 'Aceite de Motor', codigo: '1R-1808', marca: 'CAT OEM', observacion: 'Reemplazado hace 50 hs' },
     ],
     elementos_desgaste: [
       { descripcion: 'Cuchillas y calzas de balde al 60% de desgaste' },
@@ -283,34 +312,19 @@ const SEED_RECEPCIONES: RecepcionData[] = [
     ],
     ultimos_servicios: [
       { fecha: '2026-09-15', contador: 4600, unidad: 'hs', tipo_servicio: 'Servicio 500 Hs - Cambio aceite motor y filtros de combustible' },
-      { fecha: '2026-06-10', contador: 4000, unidad: 'hs', tipo_servicio: 'Servicio 1000 Hs integral (Aceite hidráulico y mandos finales)' },
     ],
     lubricantes: [
       {
-        sector: '1b8997a1-2d7c-4890-a359-001',
-        sector_nombre: 'Motor térmico',
+        sector: 'fbda9acd-610f-4335-85b4-1c0e3df7ccba',
+        sector_nombre: 'Reductor tambor traslación',
         aceite_grasa: 'aceite',
         marca: 'Mobil Delvac MX 15W-40',
         cantidad: 28,
         unidad_cant: 'litros',
         frecuencia: 250,
         unidad_fcia: 'hs',
-        refrigerante_tipo: 'Cat ELC Rojo 50/50',
-        refrigerante_cantidad: 30,
         planilla_adjunta: true,
         comentarios: 'Nivel óptimo en varilla',
-      },
-      {
-        sector: '1b8997a1-2d7c-4890-a359-003',
-        sector_nombre: 'Sistema hidráulico principal',
-        aceite_grasa: 'aceite',
-        marca: 'Shell Tellus S2 V 46',
-        cantidad: 145,
-        unidad_cant: 'litros',
-        frecuencia: 2000,
-        unidad_fcia: 'hs',
-        planilla_adjunta: true,
-        comentarios: 'Visor transparente en tres cuartos',
       },
     ],
     documentos_accesorios: {
@@ -326,63 +340,6 @@ const SEED_RECEPCIONES: RecepcionData[] = [
     adjuntos: [],
     synced_with_supabase: true,
   },
-  {
-    id: 'f8b271c3-4d23-4e88-9923-89e02135f002',
-    fecha: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0],
-    interno: 'CM-08',
-    tipo: 'Camión Volcador 6x4',
-    marca: 'Mercedes-Benz',
-    modelo: 'Actros 3344K',
-    contador: 142300,
-    unidad_cont: 'km',
-    serie: '9340321K882194',
-    origen: 'Subcontratista Obra',
-    mantenimiento_propietario: false,
-    obra: 'Autopista RN 7 Km 140-190',
-    remito: 67104,
-    propietario: 'prop-002',
-    dominio: 'AF 892 TR',
-    estado: 'completa',
-    responsable_id: 'resp-002',
-    responsable_nombre: 'Marcos Galván (Capataz Mecánico de Obra)',
-    fecha_informe: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0],
-    observaciones_generales: 'Unidad recibida para movimiento de suelos en terraplén. Se detectó pequeña pérdida de aire en acople de frenos de caja volcadora.',
-    datos_complementarios: 'Caja volcadora Baco de 16 m3 con cilindro telescópico frontal sin rayaduras.',
-    motor_combustion: {
-      marca: 'Mercedes-Benz',
-      modelo: 'OM 501 LA V6',
-      serie: '501-942-00-128',
-      correa: 'Poli-V 8PK (Nueva)',
-    },
-    motor_electrico: null,
-    filtros_instalados: [
-      { tipo_filtro: 'f001-a1', tipo_filtro_nombre: 'Aceite Motor', codigo: 'HU 12140 x', marca: 'Mann-Filter', observacion: 'Ok' },
-      { tipo_filtro: 'f002-a2', tipo_filtro_nombre: 'Combustible Primario', codigo: 'WK 842', marca: 'Mann-Filter', observacion: 'Ok' },
-    ],
-    elementos_desgaste: [
-      { descripcion: 'Neumáticos 12.00 R24 eje trasero con 70% de dibujo' },
-      { descripcion: 'Cintas de freno traseras al 50%' },
-    ],
-    faltantes: [
-      { descripcion: 'Balizas triangulares reglamentarias no entregadas' },
-    ],
-    ultimos_servicios: [
-      { fecha: '2026-08-20', contador: 135000, unidad: 'km', tipo_servicio: 'Service Completo Aceite y Filtros en Concesionario Oficial' },
-    ],
-    lubricantes: [],
-    documentos_accesorios: {
-      documentacion: true,
-      gato_hidraulico: true,
-      matafuego: true,
-      botiquin: false,
-      calzas_cuñas: true,
-      rueda_auxilio: true,
-      kit_seguridad: true,
-      comentario: 'Cédula verde y VTV al día. Falta botiquín de primeros auxilios reglamentario.',
-    },
-    adjuntos: [],
-    synced_with_supabase: true,
-  },
 ];
 
 // Recepciones Repository
@@ -391,25 +348,31 @@ export function getRecepciones(): RecepcionData[] {
 }
 
 export function saveRecepcion(item: RecepcionData): void {
-  const list = getRecepciones();
-  const idx = list.findIndex((r) => r.id === item.id);
+  const safeId = ensureValidUuid(item.id);
   const updatedItem: RecepcionData = {
     ...item,
+    id: safeId,
     updated_at: new Date().toISOString(),
   };
 
+  const list = getRecepciones();
+  const idx = list.findIndex((r) => r.id === updatedItem.id);
   if (idx >= 0) {
     list[idx] = updatedItem;
   } else {
     list.unshift(updatedItem);
   }
   setStored(KEYS.RECEPCIONES, list);
+  window.dispatchEvent(new CustomEvent('recepciones-updated', { detail: list }));
 }
 
 export function deleteRecepcion(id: string): void {
   const list = getRecepciones().filter((r) => r.id !== id);
   setStored(KEYS.RECEPCIONES, list);
-  getSupabaseClient().from('equipo').delete().eq('id', id).then();
+  window.dispatchEvent(new CustomEvent('recepciones-updated', { detail: list }));
+  if (isValidUuid(id)) {
+    getSupabaseClient().from('equipo').delete().eq('id', id).then();
+  }
 }
 
 /**
@@ -417,56 +380,13 @@ export function deleteRecepcion(id: string): void {
  */
 export async function syncWithSupabaseRemote(): Promise<{ synced: number; error?: string }> {
   try {
-    const client = getSupabaseClient();
-    
-    // Fetch propietarios
-    const { data: propData } = await client.from('propietario').select('*');
-    if (propData && propData.length > 0) {
-      const localProps = getPropietarios();
-      const mergedMap = new Map<string, Propietario>();
-      localProps.forEach((p) => mergedMap.set(p.id, p));
-      propData.forEach((p: any) => {
-        mergedMap.set(p.id, {
-          id: p.id,
-          razon_social: p.razon_social,
-          cuit: p.cuit,
-          nombre_contacto: p.nombre_contacto,
-          tel_contacto: p.tel_contacto,
-          correo_contacto: p.correo_contacto,
-        });
-      });
-      setStored(KEYS.PROPIETARIOS, Array.from(mergedMap.values()));
-    }
-
-    // Fetch sectores
-    const { data: secData } = await client.from('plan_lista_sector').select('*');
-    if (secData && secData.length > 0) {
-      const localSec = getSectores();
-      const map = new Map<string, PlanListaSector>();
-      localSec.forEach((s) => map.set(s.id, s));
-      secData.forEach((s: any) => map.set(s.id, { id: s.id, sector: s.sector }));
-      setStored(KEYS.SECTORES, Array.from(map.values()));
-    }
-
-    // Fetch filtros
-    const { data: filtData } = await client.from('filtros_lista').select('*');
-    if (filtData && filtData.length > 0) {
-      const localFilt = getFiltros();
-      const map = new Map<string, FiltrosLista>();
-      localFilt.forEach((f) => map.set(f.id, f));
-      filtData.forEach((f: any) => map.set(f.id, { id: f.id, tipo: f.tipo }));
-      setStored(KEYS.FILTROS, Array.from(map.values()));
-    }
-
-    // Fetch responsables
-    const { data: respData } = await client.from('responsable').select('*');
-    if (respData && respData.length > 0) {
-      const localResp = getResponsables();
-      const map = new Map<string, Responsable>();
-      localResp.forEach((r) => map.set(r.id, r));
-      respData.forEach((r: any) => map.set(r.id, { id: r.id, nombre: r.nombre }));
-      setStored(KEYS.RESPONSABLES, Array.from(map.values()));
-    }
+    const [propRes, secRes, filtRes, respRes, eqRes] = await Promise.allSettled([
+      fetchPropietariosDirect(),
+      fetchSectoresDirect(),
+      fetchFiltrosDirect(),
+      fetchResponsablesDirect(),
+      fetchEquiposDirect(),
+    ]);
 
     return { synced: 1 };
   } catch (err: any) {

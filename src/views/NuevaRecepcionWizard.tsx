@@ -33,13 +33,20 @@ import {
 } from '../types';
 import {
   getPropietarios,
-  savePropietario,
   getSectores,
   getFiltros,
   getResponsables,
   getRecepciones,
   saveRecepcion,
 } from '../lib/offlineStore';
+import {
+  ensureValidUuid,
+  fetchPropietariosDirect,
+  createPropietarioDirect,
+  fetchSectoresDirect,
+  fetchFiltrosDirect,
+  fetchResponsablesDirect,
+} from '../lib/supabaseService';
 import { syncRecepcionToSupabase } from '../lib/supabase';
 import { UploaderFotos } from '../components/UploaderFotos';
 import { downloadRecepcionPdf, formatFechaArg, formatNumeroArg } from '../lib/pdfGenerator';
@@ -96,7 +103,7 @@ export const NuevaRecepcionWizard: React.FC<WizardProps> = ({
     if (initialData) return initialData;
 
     return {
-      id: crypto.randomUUID ? crypto.randomUUID() : 'rec-' + Date.now(),
+      id: ensureValidUuid(),
       fecha: new Date().toISOString().split('T')[0],
       interno: '',
       tipo: '',
@@ -139,6 +146,7 @@ export const NuevaRecepcionWizard: React.FC<WizardProps> = ({
   });
 
   useEffect(() => {
+    // Initial load from cache
     setPropietarios(getPropietarios());
     setSectores(getSectores());
     setFiltros(getFiltros());
@@ -152,6 +160,26 @@ export const NuevaRecepcionWizard: React.FC<WizardProps> = ({
       }));
     }
     setAllEquiposExistentes(getRecepciones());
+
+    // Asynchronously fetch fresh data directly from Supabase
+    Promise.all([
+      fetchPropietariosDirect(),
+      fetchSectoresDirect(),
+      fetchFiltrosDirect(),
+      fetchResponsablesDirect(),
+    ]).then(([pRes, sRes, fRes, rRes]) => {
+      if (pRes.data && pRes.data.length > 0) setPropietarios(pRes.data);
+      if (sRes.data && sRes.data.length > 0) setSectores(sRes.data);
+      if (fRes.data && fRes.data.length > 0) setFiltros(fRes.data);
+      if (rRes.data && rRes.data.length > 0) {
+        setResponsables(rRes.data);
+        setFormData((prev) => ({
+          ...prev,
+          responsable_id: prev.responsable_id || rRes.data[0].id,
+          responsable_nombre: prev.responsable_nombre || rRes.data[0].nombre,
+        }));
+      }
+    }).catch((err) => console.warn('Wizard async fetch from Supabase:', err));
   }, []);
 
   // Auto-save whenever step changes or explicitly triggered
@@ -197,20 +225,24 @@ export const NuevaRecepcionWizard: React.FC<WizardProps> = ({
     setEquipoSearchTerm('');
   };
 
-  // Quick add owner
-  const handleQuickAddOwner = (e: React.FormEvent) => {
+  // Quick add owner directly with Supabase
+  const handleQuickAddOwner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOwnerRazon.trim()) return;
-    const newProp: Propietario = {
-      id: 'prop-' + Date.now(),
+    
+    const res = await createPropietarioDirect({
       razon_social: newOwnerRazon.trim(),
-      cuit: newOwnerCuit.trim() ? Number(newOwnerCuit.replace(/\D/g, '')) : null,
-      nombre_contacto: newOwnerContacto.trim(),
-      tel_contacto: newOwnerTel.trim() ? Number(newOwnerTel.replace(/\D/g, '')) : null,
-    };
-    savePropietario(newProp);
-    setPropietarios(getPropietarios());
-    setFormData((prev) => ({ ...prev, propietario: newProp.id }));
+      cuit: newOwnerCuit.trim() || null,
+      nombre_contacto: newOwnerContacto.trim() || null,
+      tel_contacto: newOwnerTel.trim() || null,
+    });
+
+    if (res.data) {
+      const updatedList = [res.data, ...propietarios];
+      setPropietarios(updatedList);
+      setFormData((prev) => ({ ...prev, propietario: res.data!.id }));
+    }
+    
     setShowQuickAddOwner(false);
     setNewOwnerRazon('');
     setNewOwnerCuit('');

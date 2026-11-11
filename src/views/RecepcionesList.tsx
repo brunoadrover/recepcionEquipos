@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -18,6 +18,7 @@ import {
 import { RecepcionData, EstadoRecepcion, Propietario } from '../types';
 import { getRecepciones, deleteRecepcion, getPropietarios } from '../lib/offlineStore';
 import { downloadRecepcionPdf, formatFechaArg, formatNumeroArg } from '../lib/pdfGenerator';
+import { fetchEquiposDirect, fetchPropietariosDirect } from '../lib/supabaseService';
 
 interface RecepcionesListProps {
   activeObra: string;
@@ -44,6 +45,28 @@ export const RecepcionesList: React.FC<RecepcionesListProps> = ({
   const [filterObraOnly, setFilterObraOnly] = useState(true);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Initial fetch from Supabase
+    Promise.all([fetchEquiposDirect(), fetchPropietariosDirect()]).then(([eRes, pRes]) => {
+      if (eRes.data && eRes.data.length > 0) setRecepciones(eRes.data);
+      if (pRes.data && pRes.data.length > 0) setPropietarios(pRes.data);
+    }).catch((err) => console.warn('Supabase fetch error:', err));
+
+    const handleRecs = (e: any) => {
+      if (e.detail) setRecepciones(e.detail);
+    };
+    const handleProps = (e: any) => {
+      if (e.detail) setPropietarios(e.detail);
+    };
+
+    window.addEventListener('recepciones-updated', handleRecs);
+    window.addEventListener('propietarios-updated', handleProps);
+    return () => {
+      window.removeEventListener('recepciones-updated', handleRecs);
+      window.removeEventListener('propietarios-updated', handleProps);
+    };
+  }, []);
 
   const refreshList = () => {
     setRecepciones(getRecepciones());

@@ -1,5 +1,20 @@
-import React, { useState } from 'react';
-import { Truck, Users, Plus, Trash2, Edit2, Search, X, Check, Phone, Mail, Building } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Truck,
+  Users,
+  Plus,
+  Trash2,
+  Edit2,
+  Search,
+  X,
+  Check,
+  Phone,
+  Mail,
+  Building,
+  RefreshCw,
+  Database,
+  AlertCircle,
+} from 'lucide-react';
 import { Propietario, RecepcionData } from '../types';
 import {
   getPropietarios,
@@ -9,6 +24,12 @@ import {
   saveRecepcion,
   getActiveObra,
 } from '../lib/offlineStore';
+import {
+  fetchPropietariosDirect,
+  fetchEquiposDirect,
+  ensureValidUuid,
+} from '../lib/supabaseService';
+import { syncRecepcionToSupabase } from '../lib/supabase';
 import { formatNumeroArg } from '../lib/pdfGenerator';
 
 export const EquiposView: React.FC = () => {
@@ -16,6 +37,8 @@ export const EquiposView: React.FC = () => {
   const [propietarios, setPropietarios] = useState<Propietario[]>(() => getPropietarios());
   const [recepciones, setRecepciones] = useState<RecepcionData[]>(() => getRecepciones());
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
 
   // Propietario modal
   const [showPropModal, setShowPropModal] = useState(false);
@@ -25,6 +48,8 @@ export const EquiposView: React.FC = () => {
   const [propContacto, setPropContacto] = useState('');
   const [propTel, setPropTel] = useState('');
   const [propCorreo, setPropCorreo] = useState('');
+  const [propModalError, setPropModalError] = useState<string | null>(null);
+  const [isSavingProp, setIsSavingProp] = useState(false);
 
   // Equipo modal
   const [showEquipoModal, setShowEquipoModal] = useState(false);
@@ -36,9 +61,45 @@ export const EquiposView: React.FC = () => {
   const [eqDominio, setEqDominio] = useState('');
   const [eqPropietario, setEqPropietario] = useState('');
 
-  const refresh = () => {
-    setPropietarios(getPropietarios());
-    setRecepciones(getRecepciones());
+  // Proactive fetch from Supabase on mount
+  useEffect(() => {
+    loadData();
+
+    const handlePropsUpdated = (e: any) => {
+      if (e.detail) setPropietarios(e.detail);
+    };
+    const handleRecsUpdated = (e: any) => {
+      if (e.detail) setRecepciones(e.detail);
+    };
+
+    window.addEventListener('propietarios-updated', handlePropsUpdated);
+    window.addEventListener('recepciones-updated', handleRecsUpdated);
+    return () => {
+      window.removeEventListener('propietarios-updated', handlePropsUpdated);
+      window.removeEventListener('recepciones-updated', handleRecsUpdated);
+    };
+  }, []);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    const [pRes, eRes] = await Promise.allSettled([
+      fetchPropietariosDirect(),
+      fetchEquiposDirect(),
+    ]);
+
+    if (pRes.status === 'fulfilled' && pRes.value.data.length > 0) {
+      setPropietarios(pRes.value.data);
+    } else {
+      setPropietarios(getPropietarios());
+    }
+
+    if (eRes.status === 'fulfilled' && eRes.value.data.length > 0) {
+      setRecepciones(eRes.value.data);
+    } else {
+      setRecepciones(getRecepciones());
+    }
+
+    setIsLoading(false);
   };
 
   const handleOpenNewProp = () => {
@@ -48,6 +109,7 @@ export const EquiposView: React.FC = () => {
     setPropContacto('');
     setPropTel('');
     setPropCorreo('');
+    setPropModalError(null);
     setShowPropModal(true);
   };
 
@@ -58,15 +120,22 @@ export const EquiposView: React.FC = () => {
     setPropContacto(p.nombre_contacto || '');
     setPropTel(p.tel_contacto ? String(p.tel_contacto) : '');
     setPropCorreo(p.correo_contacto || '');
+    setPropModalError(null);
     setShowPropModal(true);
   };
 
-  const handleSaveProp = (e: React.FormEvent) => {
+  const handleSaveProp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!propRazon.trim()) return;
+    if (!propRazon.trim()) {
+      setPropModalError('La razón social es obligatoria.');
+      return;
+    }
+
+    setIsSavingProp(true);
+    setPropModalError(null);
 
     const item: Propietario = {
-      id: editingProp ? editingProp.id : 'prop-' + Date.now(),
+      id: editingProp ? editingProp.id : ensureValidUuid(),
       razon_social: propRazon.trim(),
       cuit: propCuit.trim() ? Number(propCuit.replace(/\D/g, '')) : null,
       nombre_contacto: propContacto.trim() || null,
@@ -74,24 +143,36 @@ export const EquiposView: React.FC = () => {
       correo_contacto: propCorreo.trim() || null,
     };
 
-    savePropietario(item);
-    refresh();
-    setShowPropModal(false);
-  };
-
-  const handleDeleteProp = (id: string) => {
-    if (window.confirm('¿Eliminar este propietario? Los equipos asociados mantendrán su historial.')) {
-      deletePropietario(id);
-      refresh();
+    try {
+      await savePropietario(item);
+      setSyncStatusMsg('Propietario guardado y sincronizado con Supabase.');
+      setTimeout(() => setSyncStatusMsg(null), 3000);
+      setShowPropModal(false);
+      // Refresh list
+      const res = await fetchPropietariosDirect();
+      if (res.data.length > 0) setPropietarios(res.data);
+    } catch (err: any) {
+      console.error('Error saving propietario:', err);
+      setPropModalError(`Error: ${err.message || 'No se pudo guardar en Supabase'}`);
+    } finally {
+      setIsSavingProp(false);
     }
   };
 
-  const handleSaveEquipo = (e: React.FormEvent) => {
+  const handleDeleteProp = async (id: string) => {
+    if (window.confirm('¿Eliminar este propietario de Supabase?')) {
+      await deletePropietario(id);
+      const res = await fetchPropietariosDirect();
+      if (res.data) setPropietarios(res.data);
+    }
+  };
+
+  const handleSaveEquipo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!eqInterno.trim()) return;
 
     const newRec: RecepcionData = {
-      id: crypto.randomUUID ? crypto.randomUUID() : 'rec-' + Date.now(),
+      id: ensureValidUuid(),
       fecha: new Date().toISOString().split('T')[0],
       interno: eqInterno.trim(),
       tipo: eqTipo.trim() || 'Maquinaria',
@@ -125,7 +206,8 @@ export const EquiposView: React.FC = () => {
     };
 
     saveRecepcion(newRec);
-    refresh();
+    await syncRecepcionToSupabase(newRec);
+
     setShowEquipoModal(false);
     setEqInterno('');
     setEqTipo('');
@@ -133,6 +215,9 @@ export const EquiposView: React.FC = () => {
     setEqModelo('');
     setEqSerie('');
     setEqDominio('');
+
+    const res = await fetchEquiposDirect();
+    if (res.data) setRecepciones(res.data);
   };
 
   return (
@@ -141,40 +226,64 @@ export const EquiposView: React.FC = () => {
       {/* Header and Sub-Tabs */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-            Gestión de Equipos y Propietarios
-          </h1>
-          <p className="text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              Gestión de Equipos y Propietarios
+            </h1>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              <Database className="w-3 h-3" /> Supabase Conectado
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
             Administrá el catálogo de empresas socias, transportistas y parque de maquinaria.
           </p>
         </div>
 
-        {/* SubTab Toggle */}
-        <div className="flex bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
+        {/* SubTab Toggle & Refresh */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
-            onClick={() => setSubTab('propietarios')}
-            className={`min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              subTab === 'propietarios'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            onClick={loadData}
+            disabled={isLoading}
+            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"
+            title="Recargar desde Supabase"
           >
-            <Users className="w-4 h-4 text-amber-600" />
-            <span>Propietarios ({propietarios.length})</span>
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-500' : ''}`} />
           </button>
-          <button
-            onClick={() => setSubTab('equipos')}
-            className={`min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              subTab === 'equipos'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Truck className="w-4 h-4 text-amber-600" />
-            <span>Equipos ({recepciones.length})</span>
-          </button>
+
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setSubTab('propietarios')}
+              className={`min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                subTab === 'propietarios'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users className="w-4 h-4 text-amber-600" />
+              <span>Propietarios ({propietarios.length})</span>
+            </button>
+            <button
+              onClick={() => setSubTab('equipos')}
+              className={`min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                subTab === 'equipos'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Truck className="w-4 h-4 text-amber-600" />
+              <span>Equipos ({recepciones.length})</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Sync Status Banner */}
+      {syncStatusMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs rounded-xl flex items-center gap-2 animate-fade-in">
+          <Check className="w-4 h-4 text-emerald-600" />
+          <span className="font-bold">{syncStatusMsg}</span>
+        </div>
+      )}
 
       {/* SubTab 1: Propietarios */}
       {subTab === 'propietarios' && (
@@ -225,40 +334,45 @@ export const EquiposView: React.FC = () => {
                     <div className="space-y-1 text-xs text-slate-600 mt-2">
                       {p.nombre_contacto && (
                         <p className="flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-slate-400" />
+                          <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>{p.nombre_contacto}</span>
                         </p>
                       )}
                       {p.tel_contacto && (
                         <p className="flex items-center gap-1.5">
-                          <Phone className="w-3.5 h-3.5 text-slate-400" />
+                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span className="font-mono">{p.tel_contacto}</span>
                         </p>
                       )}
                       {p.correo_contacto && (
                         <p className="flex items-center gap-1.5 truncate">
-                          <Mail className="w-3.5 h-3.5 text-slate-400" />
+                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span className="truncate">{p.correo_contacto}</span>
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-1 pt-3 border-t border-slate-100 mt-3">
-                    <button
-                      onClick={() => handleOpenEditProp(p)}
-                      className="p-1.5 text-slate-600 hover:text-[#0F2D3C] hover:bg-slate-100 rounded-lg"
-                      title="Editar"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProp(p.id)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100 mt-3">
+                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[130px]" title={p.id}>
+                      UUID: {p.id.substring(0, 8)}...
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditProp(p)}
+                        className="p-1.5 text-slate-600 hover:text-[#0F2D3C] hover:bg-slate-100 rounded-lg"
+                        title="Editar en Supabase"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProp(p.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                        title="Eliminar de Supabase"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -334,9 +448,18 @@ export const EquiposView: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
             <h3 className="text-base font-bold text-slate-900 mb-1">
-              {editingProp ? 'Editar Propietario' : 'Nuevo Propietario'}
+              {editingProp ? 'Editar Propietario' : 'Nuevo Propietario (Supabase)'}
             </h3>
-            <p className="text-xs text-slate-500 mb-4">Información de la empresa o particular dueño de la maquinaria.</p>
+            <p className="text-xs text-slate-500 mb-4">
+              Se guardará en la tabla relacional <strong className="font-mono text-slate-700">propietario</strong>.
+            </p>
+
+            {propModalError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{propModalError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSaveProp} className="space-y-3">
               <div>
@@ -406,9 +529,11 @@ export const EquiposView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-bold bg-[#0F2D3C] text-white hover:bg-[#163e52] rounded-lg shadow-sm"
+                  disabled={isSavingProp}
+                  className="px-4 py-2 text-xs font-bold bg-[#0F2D3C] text-white hover:bg-[#163e52] rounded-lg shadow-sm flex items-center gap-1.5"
                 >
-                  Guardar Propietario
+                  {isSavingProp && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isSavingProp ? 'Guardando en Supabase...' : 'Guardar en Supabase'}</span>
                 </button>
               </div>
             </form>
@@ -420,7 +545,7 @@ export const EquiposView: React.FC = () => {
       {showEquipoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-            <h3 className="text-base font-bold text-slate-900 mb-1">Alta de Equipo</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-1">Alta de Equipo en Obra</h3>
             <p className="text-xs text-slate-500 mb-4">Ingresá los datos identificatorios de la máquina.</p>
 
             <form onSubmit={handleSaveEquipo} className="space-y-3">
@@ -498,7 +623,7 @@ export const EquiposView: React.FC = () => {
                 <select
                   value={eqPropietario}
                   onChange={(e) => setEqPropietario(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-semibold"
                 >
                   {propietarios.map((p) => (
                     <option key={p.id} value={p.id}>{p.razon_social}</option>

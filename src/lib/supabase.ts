@@ -165,10 +165,17 @@ export async function deleteArchivoStorage(path: string, bucketName?: string): P
 export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise<{ success: boolean; error?: string }> {
   try {
     const client = getSupabaseClient();
+    const safeEquipoId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recepcion.id)
+      ? recepcion.id
+      : (crypto.randomUUID ? crypto.randomUUID() : recepcion.id);
+
+    const safePropietarioId = recepcion.propietario && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recepcion.propietario)
+      ? recepcion.propietario
+      : null;
 
     // 1. Upsert `equipo`
     const equipoPayload: any = {
-      id: recepcion.id,
+      id: safeEquipoId,
       fecha: recepcion.fecha || new Date().toISOString().split('T')[0],
       interno: recepcion.interno,
       tipo: recepcion.tipo || null,
@@ -185,7 +192,7 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
       url_imagen_4: recepcion.adjuntos?.[3]?.url || recepcion.url_imagen_4 || null,
       obra: recepcion.obra,
       remito: recepcion.remito ? Number(recepcion.remito) || null : null,
-      propietario: recepcion.propietario || null,
+      propietario: safePropietarioId,
       dominio: recepcion.dominio || null,
     };
 
@@ -197,9 +204,9 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 2. Motor Combustión
     if (recepcion.motor_combustion && recepcion.motor_combustion.marca) {
-      await client.from('motor_combustion').delete().eq('equipo', recepcion.id);
+      await client.from('motor_combustion').delete().eq('equipo', safeEquipoId);
       await client.from('motor_combustion').insert({
-        equipo: recepcion.id,
+        equipo: safeEquipoId,
         marca: recepcion.motor_combustion.marca,
         modelo: recepcion.motor_combustion.modelo,
         serie: recepcion.motor_combustion.serie,
@@ -209,9 +216,9 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 3. Motor Eléctrico
     if (recepcion.motor_electrico && recepcion.motor_electrico.marca) {
-      await client.from('motor_electrico').delete().eq('equipo', recepcion.id);
+      await client.from('motor_electrico').delete().eq('equipo', safeEquipoId);
       await client.from('motor_electrico').insert({
-        equipo: recepcion.id,
+        equipo: safeEquipoId,
         marca: recepcion.motor_electrico.marca,
         modelo: recepcion.motor_electrico.modelo,
         potencia: recepcion.motor_electrico.potencia,
@@ -221,11 +228,11 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 4. Filtros Instalados
     if (recepcion.filtros_instalados?.length > 0) {
-      await client.from('filtros_instalados').delete().eq('equipo', recepcion.id);
+      await client.from('filtros_instalados').delete().eq('equipo', safeEquipoId);
       const filtrosPayload = recepcion.filtros_instalados
-        .filter((f) => f.tipo_filtro)
+        .filter((f) => f.tipo_filtro && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(f.tipo_filtro))
         .map((f) => ({
-          equipo: recepcion.id,
+          equipo: safeEquipoId,
           tipo_filtro: f.tipo_filtro,
           codigo: f.codigo || null,
           marca: f.marca || null,
@@ -238,11 +245,11 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 5. Elementos de Desgaste
     if (recepcion.elementos_desgaste?.length > 0) {
-      await client.from('elementos_desgaste').delete().eq('equipo', recepcion.id);
+      await client.from('elementos_desgaste').delete().eq('equipo', safeEquipoId);
       const desgPayload = recepcion.elementos_desgaste
         .filter((e) => e.descripcion && e.descripcion.trim())
         .map((e) => ({
-          equipo: recepcion.id,
+          equipo: safeEquipoId,
           descripcion: e.descripcion,
         }));
       if (desgPayload.length > 0) {
@@ -252,11 +259,11 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 6. Faltantes
     if (recepcion.faltantes?.length > 0) {
-      await client.from('faltantes').delete().eq('equipo', recepcion.id);
+      await client.from('faltantes').delete().eq('equipo', safeEquipoId);
       const faltPayload = recepcion.faltantes
         .filter((f) => f.descripcion && f.descripcion.trim())
         .map((f) => ({
-          equipo: recepcion.id,
+          equipo: safeEquipoId,
           descripcion: f.descripcion,
         }));
       if (faltPayload.length > 0) {
@@ -266,20 +273,20 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 7. Datos Complementarios
     if (recepcion.datos_complementarios && recepcion.datos_complementarios.trim()) {
-      await client.from('datos_complementarios').delete().eq('equipo', recepcion.id);
+      await client.from('datos_complementarios').delete().eq('equipo', safeEquipoId);
       await client.from('datos_complementarios').insert({
-        equipo: recepcion.id,
+        equipo: safeEquipoId,
         descripcion: recepcion.datos_complementarios,
       });
     }
 
     // 8. Último Servicio
     if (recepcion.ultimos_servicios?.length > 0) {
-      await client.from('ultimo_servicio').delete().eq('equipo', recepcion.id);
+      await client.from('ultimo_servicio').delete().eq('equipo', safeEquipoId);
       const servPayload = recepcion.ultimos_servicios
         .filter((s) => s.fecha || s.tipo_servicio)
         .map((s) => ({
-          equipo: recepcion.id,
+          equipo: safeEquipoId,
           fecha: s.fecha || null,
           contador: s.contador ? Number(s.contador) : null,
           unidad: s.unidad || 'hs',
@@ -292,11 +299,11 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 9. Lubricantes
     if (recepcion.lubricantes?.length > 0) {
-      await client.from('lubricantes').delete().eq('equipo', recepcion.id);
+      await client.from('lubricantes').delete().eq('equipo', safeEquipoId);
       const lubPayload = recepcion.lubricantes
-        .filter((l) => l.sector)
+        .filter((l) => l.sector && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(l.sector))
         .map((l) => ({
-          equipo: recepcion.id,
+          equipo: safeEquipoId,
           sector: l.sector,
           aceite_grasa: l.aceite_grasa || null,
           marca: l.marca || null,
@@ -316,9 +323,9 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
 
     // 10. Documentos y Accesorios
     if (recepcion.documentos_accesorios) {
-      await client.from('documentos_accesorios').delete().eq('equipo', recepcion.id);
+      await client.from('documentos_accesorios').delete().eq('equipo', safeEquipoId);
       await client.from('documentos_accesorios').insert({
-        equipo: recepcion.id,
+        equipo: safeEquipoId,
         documentacion: Boolean(recepcion.documentos_accesorios.documentacion),
         gato_hidraulico: Boolean(recepcion.documentos_accesorios.gato_hidraulico),
         matafuego: Boolean(recepcion.documentos_accesorios.matafuego),
@@ -328,22 +335,6 @@ export async function syncRecepcionToSupabase(recepcion: RecepcionData): Promise
         kit_seguridad: Boolean(recepcion.documentos_accesorios.kit_seguridad),
         comentario: recepcion.documentos_accesorios.comentario || null,
       });
-    }
-
-    // 11. Recepción adjuntos if table exists
-    if (recepcion.adjuntos?.length > 0) {
-      try {
-        await client.from('recepcion_adjuntos').delete().eq('recepcion_id', recepcion.id);
-        const adjPayload = recepcion.adjuntos.map((a) => ({
-          recepcion_id: recepcion.id,
-          tipo: a.tipo,
-          storage_path: a.storage_path,
-          nombre_archivo: a.nombre_archivo,
-        }));
-        await client.from('recepcion_adjuntos').insert(adjPayload);
-      } catch (e) {
-        // Table recepcion_adjuntos might not have been created yet, which is safe
-      }
     }
 
     return { success: true };
