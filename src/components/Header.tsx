@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { HardHat, ChevronDown, CheckCircle2, CloudOff, RefreshCw, Plus, Building2 } from 'lucide-react';
-import { getObras, getActiveObra, setActiveObra, saveObra, syncWithSupabaseRemote } from '../lib/offlineStore';
+import { HardHat, ChevronDown, CheckCircle2, CloudOff, RefreshCw, Plus, Building2, Trash2 } from 'lucide-react';
+import { getObras, getActiveObra, setActiveObra, saveObra, deleteObra, clearPresetObras, syncWithSupabaseRemote } from '../lib/offlineStore';
 import { ObraItem } from '../types';
 
 interface HeaderProps {
@@ -24,12 +24,36 @@ export const Header: React.FC<HeaderProps> = ({
   const [newObraNombre, setNewObraNombre] = useState('');
   const [newObraCodigo, setNewObraCodigo] = useState('');
 
-  useEffect(() => {
+  const refreshObras = () => {
     const list = getObras();
     setObras(list);
     const active = getActiveObra();
     setSelectedObraState(active);
+  };
+
+  useEffect(() => {
+    refreshObras();
+
+    const handleObraEvent = () => refreshObras();
+    window.addEventListener('obra-changed', handleObraEvent);
+    return () => window.removeEventListener('obra-changed', handleObraEvent);
   }, []);
+
+  const handleDeleteObra = (obra: ObraItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm(`¿Eliminar "${obra.nombre}" de la lista de obras?`)) {
+      deleteObra(obra.id);
+      refreshObras();
+    }
+  };
+
+  const handleClearPresets = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm('¿Eliminar las obras de ejemplo de la lista? Podrás registrar solo tus obras reales.')) {
+      clearPresetObras();
+      refreshObras();
+    }
+  };
 
   const handleSelectObra = (nombre: string) => {
     setActiveObra(nombre);
@@ -104,35 +128,75 @@ export const Header: React.FC<HeaderProps> = ({
             {isDropdownOpen && (
               <div className="absolute left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl py-1 z-50 max-h-72 overflow-y-auto">
                 <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
-                  <span>OBRAS DISPONIBLES</span>
-                  <button
-                    onClick={() => {
-                      setIsDropdownOpen(false);
-                      setShowNewObraModal(true);
-                    }}
-                    className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 text-[11px]"
-                  >
-                    <Plus className="w-3 h-3" /> Nueva
-                  </button>
-                </div>
-                {obras.map((obra) => {
-                  const isSelected = obra.nombre === selectedObra;
-                  return (
+                  <span>OBRAS REGISTRADAS ({obras.length})</span>
+                  <div className="flex items-center gap-2">
+                    {obras.some((o) => o.id.startsWith('1111') || o.id.startsWith('2222') || o.id.startsWith('obra-')) && (
+                      <button
+                        onClick={handleClearPresets}
+                        className="text-[10px] text-slate-400 hover:text-red-400 transition-colors"
+                        title="Quitar las obras de ejemplo iniciales"
+                      >
+                        Limpiar demo
+                      </button>
+                    )}
                     <button
-                      key={obra.id}
-                      onClick={() => handleSelectObra(obra.nombre)}
-                      className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between hover:bg-slate-800 transition-colors ${
-                        isSelected ? 'bg-amber-500/15 text-amber-300 font-bold' : 'text-slate-200'
-                      }`}
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        setShowNewObraModal(true);
+                      }}
+                      className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 text-[11px]"
                     >
-                      <div className="truncate pr-2">
-                        <span className="text-[10px] text-slate-400 mr-1.5 font-mono">[{obra.codigo_uo}]</span>
-                        <span className="truncate">{obra.nombre}</span>
-                      </div>
-                      {isSelected && <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />}
+                      <Plus className="w-3 h-3" /> Nueva
                     </button>
-                  );
-                })}
+                  </div>
+                </div>
+
+                {obras.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-400">
+                    <p className="font-semibold text-slate-300 mb-1">Sin obras registradas</p>
+                    <button
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        setShowNewObraModal(true);
+                      }}
+                      className="text-amber-400 hover:underline text-xs font-bold"
+                    >
+                      + Agregar tu primera obra
+                    </button>
+                  </div>
+                ) : (
+                  obras.map((obra) => {
+                    const isSelected = obra.nombre === selectedObra;
+                    return (
+                      <div
+                        key={obra.id}
+                        className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between hover:bg-slate-800 transition-colors group ${
+                          isSelected ? 'bg-amber-500/15 text-amber-300 font-bold' : 'text-slate-200'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleSelectObra(obra.nombre)}
+                          className="flex-1 text-left truncate pr-2 flex items-center gap-1.5"
+                        >
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0">[{obra.codigo_uo}]</span>
+                          <span className="truncate">{obra.nombre}</span>
+                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isSelected && <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mr-1" />}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteObra(obra, e)}
+                            className="p-1 text-slate-500 hover:text-red-400 hover:bg-slate-700/60 rounded transition-colors"
+                            title={`Eliminar obra ${obra.nombre}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             )}
           </div>

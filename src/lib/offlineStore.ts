@@ -119,21 +119,46 @@ export function getObras(): ObraItem[] {
 export function saveObra(obra: ObraItem): void {
   const list = getObras();
   const safeObra = { ...obra, id: ensureValidUuid(obra.id) };
-  const idx = list.findIndex((o) => o.id === safeObra.id);
+  const idx = list.findIndex((o) => o.id === safeObra.id || o.nombre === safeObra.nombre);
   if (idx >= 0) {
     list[idx] = safeObra;
   } else {
     list.unshift(safeObra);
   }
   setStored(KEYS.OBRAS, list);
+  window.dispatchEvent(new Event('obra-changed'));
+}
+
+export function deleteObra(idOrNombre: string): void {
+  const list = getObras().filter((o) => o.id !== idOrNombre && o.nombre !== idOrNombre);
+  setStored(KEYS.OBRAS, list);
+  const currentActive = getActiveObra();
+  if (currentActive === idOrNombre || !list.some((o) => o.nombre === currentActive)) {
+    const nextActive = list[0]?.nombre || '';
+    setActiveObra(nextActive);
+  }
+  window.dispatchEvent(new Event('obra-changed'));
+}
+
+export function clearPresetObras(): void {
+  const current = getObras();
+  // Filter out any of the original presets
+  const presetNames = new Set(DEFAULT_OBRAS.map((d) => d.nombre));
+  const remaining = current.filter((o) => !presetNames.has(o.nombre));
+  setStored(KEYS.OBRAS, remaining);
+  const nextActive = remaining[0]?.nombre || '';
+  setActiveObra(nextActive);
+  window.dispatchEvent(new Event('obra-changed'));
 }
 
 export function getActiveObra(): string {
   const stored = localStorage.getItem(KEYS.ACTIVE_OBRA);
   if (stored) return stored;
   const obras = getObras();
-  const first = obras[0]?.nombre || 'Autopista RN 7 Km 140-190';
-  localStorage.setItem(KEYS.ACTIVE_OBRA, first);
+  const first = obras[0]?.nombre || '';
+  if (first) {
+    localStorage.setItem(KEYS.ACTIVE_OBRA, first);
+  }
   return first;
 }
 

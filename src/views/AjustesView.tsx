@@ -14,6 +14,9 @@ import {
   Users,
   Building,
   RefreshCw,
+  Building2,
+  MapPin,
+  Check,
 } from 'lucide-react';
 import {
   getStoredSupabaseConfig,
@@ -23,6 +26,12 @@ import {
 import {
   getCompanyLogo,
   saveCompanyLogo,
+  getObras,
+  saveObra,
+  deleteObra,
+  clearPresetObras,
+  getActiveObra,
+  setActiveObra,
 } from '../lib/offlineStore';
 import {
   fetchPropietariosDirect,
@@ -38,7 +47,7 @@ import {
   createResponsableDirect,
   deleteResponsableDirect,
 } from '../lib/supabaseService';
-import { PlanListaSector, FiltrosLista, Responsable, Propietario } from '../types';
+import { PlanListaSector, FiltrosLista, Responsable, Propietario, ObraItem } from '../types';
 import { fileToDataUrl } from '../lib/imageCompressor';
 
 export const AjustesView: React.FC = () => {
@@ -74,6 +83,17 @@ export const AjustesView: React.FC = () => {
   // Status message for catalog operations
   const [catalogFeedback, setCatalogFeedback] = useState<{ msg: string; isError?: boolean } | null>(null);
 
+  // Obras State (Enriched text storage on equipo and local catalog)
+  const [obras, setObras] = useState<ObraItem[]>([]);
+  const [activeObra, setActiveObraState] = useState<string>('');
+  const [newObraNombre, setNewObraNombre] = useState('');
+  const [newObraCodigo, setNewObraCodigo] = useState('');
+
+  const refreshObras = () => {
+    setObras(getObras());
+    setActiveObraState(getActiveObra());
+  };
+
   useEffect(() => {
     const config = getStoredSupabaseConfig();
     setSupabaseUrl(config.rawUrl || config.url);
@@ -82,6 +102,11 @@ export const AjustesView: React.FC = () => {
 
     setCompanyLogo(getCompanyLogo());
     refreshCatalogs();
+    refreshObras();
+
+    const handleObraChange = () => refreshObras();
+    window.addEventListener('obra-changed', handleObraChange);
+    return () => window.removeEventListener('obra-changed', handleObraChange);
   }, []);
 
   const refreshCatalogs = async () => {
@@ -135,6 +160,46 @@ export const AjustesView: React.FC = () => {
     } catch (err) {
       console.error('Error loading logo:', err);
     }
+  };
+
+  // Obra Handlers (Enriched text & local store)
+  const handleAddObra = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newObraNombre.trim()) return;
+    const item: ObraItem = {
+      id: 'obra-' + Date.now(),
+      codigo_uo: newObraCodigo.trim() || 'UO-' + Math.floor(100 + Math.random() * 900),
+      nombre: newObraNombre.trim(),
+    };
+    saveObra(item);
+    setActiveObra(item.nombre);
+    setNewObraNombre('');
+    setNewObraCodigo('');
+    refreshObras();
+    setCatalogFeedback({ msg: `Obra "${item.nombre}" creada y seleccionada como activa.` });
+  };
+
+  const handleDeleteObra = (id: string, nombre: string) => {
+    if (window.confirm(`¿Eliminar la obra "${nombre}" de la lista?`)) {
+      deleteObra(id);
+      refreshObras();
+      setCatalogFeedback({ msg: `Obra "${nombre}" eliminada correctamente.` });
+    }
+  };
+
+  const handleClearDemoObras = () => {
+    if (window.confirm('¿Eliminar todas las obras de ejemplo/demo? Solo se conservarán las obras que hayas registrado manualmente.')) {
+      clearPresetObras();
+      refreshObras();
+      setCatalogFeedback({ msg: 'Obras de ejemplo eliminadas. La lista ahora contiene solo tus obras reales.' });
+    }
+  };
+
+  const handleSelectActiveObra = (nombre: string) => {
+    setActiveObra(nombre);
+    setActiveObraState(nombre);
+    window.dispatchEvent(new Event('obra-changed'));
+    setCatalogFeedback({ msg: `Obra activa cambiada a: "${nombre}"` });
   };
 
   // Add Propietario directly to Supabase
@@ -372,7 +437,150 @@ export const AjustesView: React.FC = () => {
         </div>
       )}
 
-      {/* 2. SECCIÓN: TABLA PROPIETARIO (ABM Directo en Supabase) */}
+      {/* 2. SECCIÓN: OBRAS DE LA EMPRESA (Campo enriquecido en equipo) */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-amber-500" />
+            <h2 className="text-base font-bold text-slate-900">
+              Obras de la Empresa <span className="text-xs text-slate-500 font-normal">(Campo de texto enriquecido)</span>
+            </h2>
+            <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 rounded-full font-mono">
+              {obras.length} obras
+            </span>
+          </div>
+
+          {obras.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearDemoObras}
+              className="text-xs text-slate-500 hover:text-red-600 px-2.5 py-1 rounded-lg hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-colors flex items-center gap-1.5"
+              title="Eliminar las obras de ejemplo iniciales para conservar solo tus obras reales"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Limpiar obras de ejemplo</span>
+            </button>
+          )}
+        </div>
+
+        <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/60 mb-4 text-xs text-slate-700 space-y-1">
+          <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Almacenamiento directo en el acta y equipo:</span>
+          </p>
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            En PostgreSQL no existe una tabla foránea de obras; cada equipo guarda el nombre de su obra en el campo <span className="font-mono bg-white px-1 py-0.5 rounded border border-amber-200 text-amber-900 font-bold">equipo.obra (text)</span>. Podés eliminar cualquier obra de ejemplo con el icono de tacho y registrar las obras reales de tu constructora.
+          </p>
+        </div>
+
+        {/* Formulario rápido para alta de Obra */}
+        <form onSubmit={handleAddObra} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-4 space-y-3">
+          <span className="text-xs font-bold text-slate-800 block">Registrar nueva obra:</span>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="sm:col-span-2">
+              <input
+                type="text"
+                required
+                value={newObraNombre}
+                onChange={(e) => setNewObraNombre(e.target.value)}
+                placeholder="Nombre de la obra * (ej. Autovía 7 - Tramo Chacabuco)"
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newObraCodigo}
+                onChange={(e) => setNewObraCodigo(e.target.value)}
+                placeholder="Código UO (ej. UO-304)"
+                className="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="px-3.5 py-2 bg-[#0F2D3C] hover:bg-[#163e52] text-white text-xs font-bold rounded-lg shrink-0 flex items-center gap-1 shadow-xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Agregar</span>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {/* Listado de Obras registradas */}
+        <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
+          {obras.length === 0 ? (
+            <div className="p-4 text-center text-xs text-slate-400 italic">
+              No hay obras registradas. Agregá la primera arriba para seleccionarla en tus actas.
+            </div>
+          ) : (
+            obras.map((o) => {
+              const isActive = activeObra === o.nombre;
+              return (
+                <div
+                  key={o.id}
+                  className={`p-3 flex items-center justify-between gap-3 transition-colors ${
+                    isActive ? 'bg-amber-50/40' : 'hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="min-w-0 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectActiveObra(o.nombre)}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center border shrink-0 transition-colors ${
+                        isActive
+                          ? 'bg-amber-500 border-amber-500 text-white'
+                          : 'border-slate-300 hover:border-amber-400 text-transparent hover:text-slate-400'
+                      }`}
+                      title={isActive ? 'Obra actualmente activa' : 'Hacer clic para activar esta obra'}
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-bold text-xs ${isActive ? 'text-slate-950 font-extrabold' : 'text-slate-900'}`}>
+                          {o.nombre}
+                        </span>
+                        {isActive && (
+                          <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-500 text-slate-950 rounded-full">
+                            OBRA ACTIVA
+                          </span>
+                        )}
+                        {o.codigo_uo && (
+                          <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
+                            {o.codigo_uo}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {!isActive && (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectActiveObra(o.nombre)}
+                        className="text-[11px] font-bold text-slate-600 hover:text-slate-900 px-2 py-1 rounded hover:bg-slate-200/60"
+                      >
+                        Activar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteObra(o.id, o.nombre)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors"
+                      title={`Eliminar obra "${o.nombre}"`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* 3. SECCIÓN: TABLA PROPIETARIO (ABM Directo en Supabase) */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -472,7 +680,7 @@ export const AjustesView: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. SECCIÓN: CATÁLOGOS SECTORES, FILTROS Y RESPONSABLES */}
+      {/* 4. SECCIÓN: CATÁLOGOS SECTORES, FILTROS Y RESPONSABLES */}
       <div className="space-y-4">
         <h2 className="text-base sm:text-lg font-bold text-slate-900">
           Catálogos de Parámetros en Supabase
@@ -624,7 +832,7 @@ export const AjustesView: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. SECCIÓN: LOGO DE LA EMPRESA */}
+      {/* 5. SECCIÓN: LOGO DE LA EMPRESA */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex items-center gap-2 mb-2">
           <ImageIcon className="w-5 h-5 text-[#0F2D3C]" />
